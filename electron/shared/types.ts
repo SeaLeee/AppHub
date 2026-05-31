@@ -21,6 +21,8 @@ export interface ScannedApp {
   pinned: boolean;
   /** how to launch: background (hidden, logs in AppHub UI) or terminal (visible terminal window) */
   launchMode: 'background' | 'terminal';
+  /** if true, app is hidden from the grid (can be toggled back via sidebar) */
+  hidden: boolean;
 }
 
 export interface RootDir {

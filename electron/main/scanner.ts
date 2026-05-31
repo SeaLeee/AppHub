@@ -78,6 +78,7 @@ function buildApp(
     order: 0,
     pinned: false,
     launchMode: 'background',
+    hidden: false,
   };
 }
 

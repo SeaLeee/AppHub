@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHub } from '../store/useHub';
 import { formatBytes, formatDuration, formatTime } from '../utils/format';
-import { Play, Square, Folder, Edit2, Star, Trash2, Clock, Trash, RefreshCw, TerminalSquare, Activity, Settings as SettingsIcon, CalendarClock } from 'lucide-react';
+import { Play, Square, Folder, Edit2, Star, Trash2, Clock, Trash, RefreshCw, TerminalSquare, Activity, Settings as SettingsIcon, CalendarClock, EyeOff } from 'lucide-react';
 
 export function DetailPanel() {
   const selected = useHub((s) => s.selectedAppId);
@@ -82,6 +82,11 @@ export function DetailPanel() {
                   onClick={() => update(app.id, { pinned: !app.pinned })}
                   title="Pin"
                 ><Star className={`w-4 h-4 ${app.pinned ? 'fill-current' : ''}`} /></button>
+                <button
+                  className={`transition-colors ${app.hidden ? 'text-white/60' : 'text-white/20 hover:text-white/60'}`}
+                  onClick={() => update(app.id, { hidden: !app.hidden })}
+                  title={app.hidden ? 'Show' : 'Hide'}
+                ><EyeOff className={`w-4 h-4 ${app.hidden ? 'opacity-100' : 'opacity-50'}`} /></button>
               </div>
             )}
             <div className="text-[12px] text-white/40 truncate mt-1 flex items-center gap-1.5" title={app.scriptPath}>

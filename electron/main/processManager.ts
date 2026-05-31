@@ -14,6 +14,7 @@ interface RunningEntry {
   exitedAt?: number;
   cpu?: number;
   memory?: number;
+  terminalMode?: boolean;
 }
 
 const MAX_LOG_LINES = 2000;
@@ -38,12 +39,10 @@ export class ProcessManager extends EventEmitter {
       return this.runtimeOf(app.id)!;
     }
 
-    // Terminal mode: open a visible terminal window running the script
     if (app.launchMode === 'terminal') {
       return this.launchTerminal(app);
     }
 
-    // Background mode: spawn hidden, capture logs in AppHub UI
     return this.launchBackground(app);
   }
 
@@ -52,7 +51,6 @@ export class ProcessManager extends EventEmitter {
     let args: string[];
 
     if (process.platform === 'darwin') {
-      // Use AppleScript to open Terminal.app and run the script
       const escapedScript = app.scriptPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const escapedCwd = app.cwd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       cmd = 'osascript';
@@ -61,24 +59,18 @@ export class ProcessManager extends EventEmitter {
         `tell app "Terminal" to do script "cd \\"${escapedCwd}\\" && sh \\"${escapedScript}\\"; exit"`,
       ];
     } else if (process.platform === 'win32') {
-      // Windows: open a new visible cmd window
       cmd = process.env.ComSpec || 'cmd.exe';
       args = ['/c', 'start', '"AppHub"', 'cmd', '/c', `"${app.scriptPath}"`, '&', 'pause'];
     } else {
-      // Linux: try common terminal emulators
       cmd = 'sh';
       args = ['-c', 'if command -v gnome-terminal >/dev/null; then gnome-terminal -- bash -c "cd \\"$1\\" && sh \\"$2\\"; exec bash"; elif command -v xterm >/dev/null; then xterm -e "cd \\"$1\\" && sh \\"$2\\"; exec bash"; elif command -v x-terminal-emulator >/dev/null; then x-terminal-emulator -e "cd \\"$1\\" && sh \\"$2\\"; exec bash"; else echo "No terminal emulator found"; fi', '_', app.cwd, app.scriptPath];
     }
 
-    this.pushLog(app.id, 'system', `[terminal] 在外部终端中启动 — ${cmd} ${args.join(' ')}`);
+    this.pushLog(app.id, 'system', `[terminal] 在外部终端中启动`);
 
     let proc: ChildProcess;
     try {
-      proc = spawn(cmd, args, {
-        cwd: app.cwd,
-        env: { ...process.env },
-        shell: false,
-      });
+      proc = spawn(cmd, args, { cwd: app.cwd, env: { ...process.env }, shell: false });
     } catch (err) {
       this.pushLog(app.id, 'system', `[error] 终端启动失败: ${(err as Error).message}`);
       const rt: AppRuntime = { id: app.id, status: 'error' };
@@ -91,37 +83,20 @@ export class ProcessManager extends EventEmitter {
       proc,
       startedAt: Date.now(),
       status: 'running',
+      terminalMode: true,
     };
     this.running.set(app.id, entry);
-    this.pushLog(app.id, 'system', `[terminal:start] PID ${proc.pid}`);
+    this.pushLog(app.id, 'system', '[terminal] 终端窗口已打开，AppHub 显示为运行中');
+
+    proc.on('exit', (code) => {
+      this.pushLog(app.id, 'system', `[terminal] 启动器进程已退出 (code=${code})，应用在终端中独立运行`);
+    });
 
     proc.on('error', (err) => {
       this.pushLog(app.id, 'system', `[error] ${err.message}`);
       entry.status = 'error';
       this.emitRuntime(app.id);
     });
-
-    proc.on('exit', (code) => {
-      entry.status = 'exited';
-      entry.exitCode = code;
-      entry.exitedAt = Date.now();
-      this.pushLog(app.id, 'system', `[terminal:exit] 终端窗口已关闭, code=${code}`);
-      this.emitRuntime(app.id);
-    });
-
-    // Give Terminal.app a moment to start, then mark as exited since the terminal
-    // process itself exits quickly after launching the window
-    if (process.platform === 'darwin') {
-      setTimeout(() => {
-        if (entry.status === 'running') {
-          entry.status = 'exited';
-          entry.exitCode = 0;
-          entry.exitedAt = Date.now();
-          this.pushLog(app.id, 'system', '[terminal] 终端窗口已打开,AppHub 不再跟踪后续输出');
-          this.emitRuntime(app.id);
-        }
-      }, 2000);
-    }
 
     this.emitRuntime(app.id);
     return this.runtimeOf(app.id)!;
@@ -142,7 +117,7 @@ export class ProcessManager extends EventEmitter {
       }
     } else {
       if (ext === '.bat' || ext === '.cmd') {
-        this.pushLog(app.id, 'system', `[warn] .bat 在非 Windows 平台无法直接执行,尝试用 sh 解析。建议同目录放 run.sh / run.command`);
+        this.pushLog(app.id, 'system', `[warn] .bat 在非 Windows 平台无法直接执行`);
         cmd = 'sh';
         args = [app.scriptPath];
       } else {
@@ -201,13 +176,20 @@ export class ProcessManager extends EventEmitter {
   stop(id: string): boolean {
     const e = this.running.get(id);
     if (!e || e.status !== 'running') return false;
+
+    if (e.terminalMode) {
+      e.status = 'exited';
+      e.exitedAt = Date.now();
+      this.pushLog(id, 'system', '[stop] 终端模式 — 已清除运行状态（终端窗口需手动关闭）');
+      this.emitRuntime(id);
+      return true;
+    }
+
     try {
       if (process.platform === 'win32' && e.proc.pid) {
-        // best effort kill tree on Windows
         spawn('taskkill', ['/PID', String(e.proc.pid), '/T', '/F']);
       } else {
         e.proc.kill('SIGTERM');
-        // hard kill after grace period
         setTimeout(() => {
           if (e.status === 'running') {
             try { e.proc.kill('SIGKILL'); } catch { /* ignore */ }
@@ -277,6 +259,7 @@ export class ProcessManager extends EventEmitter {
       const cpuCount = os.cpus().length || 1;
       const pidToId = new Map<number, string>();
       for (const [id, e] of this.running) {
+        if (e.terminalMode) continue;
         if (e.status === 'running' && e.proc.pid) pidToId.set(e.proc.pid, id);
       }
       if (pidToId.size === 0) return;
@@ -288,13 +271,12 @@ export class ProcessManager extends EventEmitter {
           if (!id) continue;
           const e = this.running.get(id);
           if (!e) continue;
-          // pidusage cpu is already a % of one core; normalize to total
           e.cpu = Math.min(100, s.cpu / cpuCount);
           e.memory = s.memory;
           this.emitRuntime(id);
         }
       } catch {
-        /* ignore — some pids may have just exited */
+        /* ignore */
       }
     }, 1500);
   }

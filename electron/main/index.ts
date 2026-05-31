@@ -44,7 +44,9 @@ function createWindow(): void {
 
   if (DEV_SERVER_URL) {
     mainWindow.loadURL(DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    if (!process.env.APPHUB_NO_DEVTOOLS) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
   } else {
     mainWindow.loadFile(path.join(RENDERER_DIST, 'index.html'));
   }

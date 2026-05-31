@@ -1,6 +1,6 @@
 import { useHub } from '../store/useHub';
 import { useMemo, useState } from 'react';
-import { Search, Hash, LayoutGrid, Layers, FolderPlus, RefreshCw, X, Folder, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Hash, LayoutGrid, Layers, FolderPlus, RefreshCw, X, Folder, ChevronDown, ChevronRight, EyeOff } from 'lucide-react';
 
 export function Sidebar() {
   const apps = useHub((s) => s.apps);
@@ -13,6 +13,9 @@ export function Sidebar() {
   const setTag = useHub((s) => s.setTag);
   const cardWidth = useHub((s) => s.cardWidth);
   const setCardWidth = useHub((s) => s.setCardWidth);
+  const showHidden = useHub((s) => s.showHidden);
+  const setShowHidden = useHub((s) => s.setShowHidden);
+  const hiddenCount = useMemo(() => apps.filter((a) => a.hidden).length, [apps]);
   const addRoot = useHub((s) => s.addRoot);
   const removeRoot = useHub((s) => s.removeRoot);
   const toggleRoot = useHub((s) => s.toggleRoot);
@@ -67,9 +70,24 @@ export function Sidebar() {
             active={!category && !tag}
             label="全部应用"
             icon={<LayoutGrid className="w-4 h-4" />}
-            count={apps.length}
+            count={apps.filter((a) => !a.hidden).length}
             onClick={() => { setCategory(null); setTag(null); }}
           />
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowHidden(!showHidden)}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-200
+                ${showHidden
+                  ? 'bg-white/10 text-white/80'
+                  : 'text-white/40 hover:bg-white/5 hover:text-white/60'}`}
+            >
+              <EyeOff className="w-4 h-4" />
+              <span>已隐藏</span>
+              <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/20 text-white/50">
+                {hiddenCount}
+              </span>
+            </button>
+          )}
         </div>
 
         {categories.length > 0 && (

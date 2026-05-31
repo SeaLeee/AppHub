@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useHub } from '../store/useHub';
 import { formatBytes } from '../utils/format';
 import type { ScannedApp } from '../../electron/shared/types';
-import { FolderSearch, Play, Square, Star, Terminal, Box, Hash, Activity } from 'lucide-react';
+import { FolderSearch, Play, Square, Star, Terminal, Box, Hash, Activity, EyeOff } from 'lucide-react';
 
 export function AppGrid() {
   const apps = useHub((s) => s.apps);
@@ -11,14 +11,16 @@ export function AppGrid() {
   const category = useHub((s) => s.category);
   const tag = useHub((s) => s.tag);
   const cardWidth = useHub((s) => s.cardWidth);
+  const showHidden = useHub((s) => s.showHidden);
   const selected = useHub((s) => s.selectedAppId);
   const setSelected = useHub((s) => s.setSelected);
   const launch = useHub((s) => s.launch);
   const stop = useHub((s) => s.stop);
 
-  const filtered = useMemo(() => {
+  const { visible, grouped } = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return apps.filter((a) => {
+    const filtered = apps.filter((a) => {
+      if (!showHidden && a.hidden) return false;
       if (category && a.category !== category) return false;
       if (tag && !a.tags?.includes(tag)) return false;
       if (q && !(
@@ -28,32 +30,60 @@ export function AppGrid() {
       )) return false;
       return true;
     });
-  }, [apps, search, category, tag]);
+
+    // Group by category. Uncategorized goes to "Other" at the end.
+    const groups = new Map<string, ScannedApp[]>();
+    for (const a of filtered) {
+      const key = a.category || 'Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(a);
+    }
+    // Sort groups: "Other" last, then alphabetically
+    const sorted = [...groups.entries()].sort(([a], [b]) => {
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      return a.localeCompare(b);
+    });
+
+    return { visible: filtered, grouped: sorted };
+  }, [apps, search, category, tag, showHidden]);
 
   if (apps.length === 0) {
     return <EmptyState />;
   }
 
   return (
-    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6">
-      <div 
-        className="grid gap-4"
-        style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))` }}
-      >
-        {filtered.map((a) => (
-          <Card
-            key={a.id}
-            app={a}
-            running={runtime[a.id]?.status === 'running'}
-            cpu={runtime[a.id]?.cpu}
-            mem={runtime[a.id]?.memory}
-            selected={selected === a.id}
-            onSelect={() => setSelected(a.id)}
-            onLaunch={() => launch(a.id)}
-            onStop={() => stop(a.id)}
-          />
-        ))}
-      </div>
+    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
+      {grouped.map(([cat, items]) => (
+        <section key={cat}>
+          <div className="flex items-center gap-2 mb-3 pl-0.5">
+            <span className="text-[11px] uppercase tracking-wider text-white/40 font-semibold">
+              {cat === 'Other' ? 'Uncategorized' : cat}
+            </span>
+            <span className="text-[10px] text-white/20 bg-white/5 px-1.5 py-0.5 rounded-full font-mono">
+              {items.length}
+            </span>
+          </div>
+          <div
+            className="grid gap-4"
+            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))` }}
+          >
+            {items.map((a) => (
+              <Card
+                key={a.id}
+                app={a}
+                running={runtime[a.id]?.status === 'running'}
+                cpu={runtime[a.id]?.cpu}
+                mem={runtime[a.id]?.memory}
+                selected={selected === a.id}
+                onSelect={() => setSelected(a.id)}
+                onLaunch={() => launch(a.id)}
+                onStop={() => stop(a.id)}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -75,6 +105,7 @@ function Card({
       onClick={onSelect}
       onDoubleClick={onLaunch}
       className={`group relative rounded-xl p-3 cursor-pointer transition-all duration-300 border backdrop-blur-md
+        ${app.hidden ? 'opacity-50 grayscale' : ''}
         ${selected
           ? 'bg-white/[0.08] border-mac-accent/50 shadow-[0_8px_30px_rgb(0,0,0,0.2)] scale-[1.02]'
           : 'bg-white/[0.03] border-white/5 hover:bg-white/[0.06] hover:border-white/10 hover:shadow-lg'}`}

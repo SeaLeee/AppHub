@@ -18,6 +18,7 @@ interface HubState {
   category: string | null;
   tag: string | null;
   cardWidth: number;
+  showHidden: boolean;
 
   init(): Promise<void>;
   setSelected(id: string | null): void;
@@ -25,6 +26,7 @@ interface HubState {
   setCategory(c: string | null): void;
   setTag(t: string | null): void;
   setCardWidth(w: number): void;
+  setShowHidden(v: boolean): void;
 
   refreshApps(): Promise<void>;
   refreshRoots(): Promise<void>;
@@ -58,6 +60,7 @@ export const useHub = create<HubState>((set, get) => ({
   category: null,
   tag: null,
   cardWidth: 200,
+  showHidden: false,
 
   async init() {
     await Promise.all([get().refreshRoots(), get().refreshApps(), get().refreshSchedules()]);
@@ -88,6 +91,7 @@ export const useHub = create<HubState>((set, get) => ({
   setCategory(c) { set({ category: c }); },
   setTag(t) { set({ tag: t }); },
   setCardWidth(w) { set({ cardWidth: w }); },
+  setShowHidden(v) { set({ showHidden: v }); },
 
   async refreshApps() {
     const apps = await window.apphub.scanApps();
