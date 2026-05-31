@@ -78,17 +78,41 @@ async function scanRoot(rootDir: string): Promise<ScannedApp[]> {
     if (e.name.startsWith('.')) continue;
     const sub = path.join(rootDir, e.name);
 
-    // Script-based apps take priority over project detection
+    // Level 1: Script-based apps take priority
     const script = await findScriptInDir(sub);
     if (script) {
       result.push(buildApp('script', script, sub, rootDir, e.name));
       continue;
     }
 
-    // Check for project files
     const proj = await findProjectInDir(sub);
     if (proj) {
       result.push(buildApp('project', proj, sub, rootDir, e.name));
+      continue;
+    }
+
+    // Level 2: scan grandchildren (e.g. seaworkspace/Project/CatDiary/)
+    let subEntries: import('node:fs').Dirent[];
+    try {
+      subEntries = await fs.readdir(sub, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const se of subEntries) {
+      if (!se.isDirectory()) continue;
+      if (se.name.startsWith('.')) continue;
+      const grandchild = path.join(sub, se.name);
+
+      const gs = await findScriptInDir(grandchild);
+      if (gs) {
+        result.push(buildApp('script', gs, grandchild, rootDir, se.name));
+        continue;
+      }
+
+      const gp = await findProjectInDir(grandchild);
+      if (gp) {
+        result.push(buildApp('project', gp, grandchild, rootDir, se.name));
+      }
     }
   }
   return result;
@@ -136,7 +160,7 @@ export async function scanAll(): Promise<ScannedApp[]> {
     if (seen.has(a.id)) continue;
     seen.add(a.id);
     const ov = overrides[a.id];
-    out.push(ov ? { ...a, ...ov, id: a.id, scriptPath: a.scriptPath, cwd: a.cwd } : a);
+    out.push(ov ? { ...a, ...ov, id: a.id, scriptPath: a.scriptPath, cwd: a.cwd, kind: a.kind } : a);
   }
 
   // sort: pinned first, then by user order, then by name
