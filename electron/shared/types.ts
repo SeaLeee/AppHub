@@ -23,6 +23,8 @@ export interface ScannedApp {
   launchMode: 'background' | 'terminal';
   /** if true, app is hidden from the grid (can be toggled back via sidebar) */
   hidden: boolean;
+  /** app kind: script = run via shell, project = open with associated app (e.g. Xcode) */
+  kind: 'script' | 'project';
 }
 
 export interface RootDir {

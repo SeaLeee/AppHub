@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useHub } from '../store/useHub';
 import { formatBytes } from '../utils/format';
 import type { ScannedApp } from '../../electron/shared/types';
-import { FolderSearch, Play, Square, Star, Terminal, Box, Hash, Activity, EyeOff } from 'lucide-react';
+import { FolderSearch, Play, Square, Star, Terminal, Box, Hash, Activity, EyeOff, FolderKanban } from 'lucide-react';
 
 export function AppGrid() {
   const apps = useHub((s) => s.apps);
@@ -118,7 +118,8 @@ function Card({
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-center gap-1.5">
             {app.pinned && <Star className="w-3.5 h-3.5 text-mac-yellow fill-mac-yellow shrink-0" />}
-            {app.launchMode === 'terminal' && <Terminal className="w-3.5 h-3.5 text-mac-accent2 shrink-0" />}
+            {app.kind === 'project' && <FolderKanban className="w-3.5 h-3.5 text-mac-accent2 shrink-0" />}
+            {app.kind !== 'project' && app.launchMode === 'terminal' && <Terminal className="w-3.5 h-3.5 text-mac-accent2 shrink-0" />}
             <span className="font-semibold truncate text-[13px] leading-tight text-white/95">{app.name}</span>
           </div>
           <div className="text-[11px] text-white/50 truncate mt-0.5" title={app.folderName}>{app.folderName}</div>

@@ -39,11 +39,71 @@ export class ProcessManager extends EventEmitter {
       return this.runtimeOf(app.id)!;
     }
 
+    // Project-type apps: open with associated application (e.g. Xcode for .xcodeproj)
+    if (app.kind === 'project') {
+      return this.launchProject(app);
+    }
+
     if (app.launchMode === 'terminal') {
       return this.launchTerminal(app);
     }
 
     return this.launchBackground(app);
+  }
+
+  private launchProject(app: ScannedApp): AppRuntime {
+    let cmd: string;
+    let args: string[];
+
+    if (process.platform === 'darwin') {
+      cmd = 'open';
+      args = [app.scriptPath];
+    } else if (process.platform === 'win32') {
+      cmd = process.env.ComSpec || 'cmd.exe';
+      args = ['/c', 'start', '', app.scriptPath];
+    } else {
+      cmd = 'xdg-open';
+      args = [app.scriptPath];
+    }
+
+    this.pushLog(app.id, 'system', `[project] 打开工程: ${app.scriptPath}`);
+
+    let proc: ChildProcess;
+    try {
+      proc = spawn(cmd, args, { cwd: app.cwd, env: { ...process.env }, shell: false });
+    } catch (err) {
+      this.pushLog(app.id, 'system', `[error] 打开失败: ${(err as Error).message}`);
+      const rt: AppRuntime = { id: app.id, status: 'error' };
+      this.emit('runtime', rt);
+      return rt;
+    }
+
+    const entry: RunningEntry = {
+      app,
+      proc,
+      startedAt: Date.now(),
+      status: 'running',
+    };
+    this.running.set(app.id, entry);
+    this.pushLog(app.id, 'system', '[project] 已用关联应用打开');
+
+    // 'open' returns immediately after launching the app; mark as exited briefly
+    proc.on('exit', (code) => {
+      entry.status = 'exited';
+      entry.exitCode = code;
+      entry.exitedAt = Date.now();
+      this.pushLog(app.id, 'system', code === 0 ? '[project] 已打开' : `[project] 退出 code=${code}`);
+      this.emitRuntime(app.id);
+    });
+
+    proc.on('error', (err) => {
+      this.pushLog(app.id, 'system', `[error] ${err.message}`);
+      entry.status = 'error';
+      this.emitRuntime(app.id);
+    });
+
+    this.emitRuntime(app.id);
+    return this.runtimeOf(app.id)!;
   }
 
   private launchTerminal(app: ScannedApp): AppRuntime {

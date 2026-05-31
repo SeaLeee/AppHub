@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHub } from '../store/useHub';
 import { formatBytes, formatDuration, formatTime } from '../utils/format';
-import { Play, Square, Folder, Edit2, Star, Trash2, Clock, Trash, RefreshCw, TerminalSquare, Activity, Settings as SettingsIcon, CalendarClock, EyeOff } from 'lucide-react';
+import { Play, Square, Folder, Edit2, Star, Trash2, Clock, Trash, RefreshCw, TerminalSquare, Activity, Settings as SettingsIcon, CalendarClock, EyeOff, FolderKanban } from 'lucide-react';
 
 export function DetailPanel() {
   const selected = useHub((s) => s.selectedAppId);
@@ -56,8 +56,8 @@ export function DetailPanel() {
       <div className="mac-nodrag px-6 pt-5 pb-4 border-b border-white/5 bg-white/[0.02]">
         <div className="flex items-start gap-4">
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold shadow-inner border
-            ${running ? 'bg-mac-green/10 text-mac-green border-mac-green/20' : 'bg-white/5 text-white/80 border-white/10'}`}>
-            {app.name.slice(0, 1).toUpperCase()}
+            ${running ? 'bg-mac-green/10 text-mac-green border-mac-green/20' : app.kind === 'project' ? 'bg-mac-accent2/10 text-mac-accent2 border-mac-accent2/20' : 'bg-white/5 text-white/80 border-white/10'}`}>
+            {app.kind === 'project' ? <FolderKanban className="w-6 h-6" /> : app.name.slice(0, 1).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
             {editingName ? (
@@ -110,7 +110,7 @@ export function DetailPanel() {
               <button
                 onClick={() => launch(app.id)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-mac-accent/90 hover:bg-mac-accent active:bg-mac-accent/80 text-white border border-white/10 transition-all font-medium text-[13px] shadow-[0_0_15px_rgba(10,132,255,0.3)]"
-              ><Play className="w-4 h-4 fill-current ml-0.5" /> Launch</button>
+              ><Play className="w-4 h-4 fill-current ml-0.5" /> {app.kind === 'project' ? 'Open' : 'Launch'}</button>
             )}
           </div>
         </div>
@@ -310,27 +310,29 @@ function SettingsView({ app }: { app: NonNullable<ReturnType<typeof useHub.getSt
           className="w-full px-3 py-1.5 rounded-md bg-white/5 border border-white/10 focus:border-mac-accent outline-none"
         />
       </Field>
-      <Field label="启动模式">
-        <div className="flex gap-1 mt-1">
-          {(['background', 'terminal'] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => update(app.id, { launchMode: mode })}
-              className={`px-3 py-1.5 rounded-md text-xs transition cursor-pointer
-                ${(app.launchMode ?? 'background') === mode
-                  ? 'bg-mac-accent text-white'
-                  : 'bg-white/5 text-mac-subtle hover:bg-white/10'}`}
-            >
-              {mode === 'background' ? '后台模式' : '终端模式'}
-            </button>
-          ))}
-        </div>
-        <div className="text-[11px] text-mac-subtle mt-1.5">
-          {app.launchMode === 'terminal'
-            ? '在外部终端窗口中执行脚本，AppHub 不捕获输出'
-            : '后台静默执行，日志实时输出到 AppHub 界面'}
-        </div>
-      </Field>
+      {app.kind !== 'project' && (
+        <Field label="启动模式">
+          <div className="flex gap-1 mt-1">
+            {(['background', 'terminal'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => update(app.id, { launchMode: mode })}
+                className={`px-3 py-1.5 rounded-md text-xs transition cursor-pointer
+                  ${(app.launchMode ?? 'background') === mode
+                    ? 'bg-mac-accent text-white'
+                    : 'bg-white/5 text-mac-subtle hover:bg-white/10'}`}
+              >
+                {mode === 'background' ? '后台模式' : '终端模式'}
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-mac-subtle mt-1.5">
+            {app.launchMode === 'terminal'
+              ? '在外部终端窗口中执行脚本，AppHub 不捕获输出'
+              : '后台静默执行，日志实时输出到 AppHub 界面'}
+          </div>
+        </Field>
+      )}
 
       <Field label="排序权重 (数字越小越靠前)">
         <input

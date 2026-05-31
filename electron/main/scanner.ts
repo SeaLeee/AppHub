@@ -16,6 +16,9 @@ const SCRIPT_CANDIDATES = [
   'start.cmd',
 ];
 
+// Directory-based project files to scan for (e.g. Xcode bundles)
+const PROJECT_SUFFIXES = ['.xcodeproj', '.xcworkspace'];
+
 function hashId(input: string): string {
   return crypto.createHash('sha1').update(input).digest('hex').slice(0, 12);
 }
@@ -33,7 +36,23 @@ async function findScriptInDir(dir: string): Promise<string | null> {
   return null;
 }
 
-/** Scan one root: each immediate sub-directory containing a run.* script becomes an app. */
+async function findProjectInDir(dir: string): Promise<string | null> {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    for (const suffix of PROJECT_SUFFIXES) {
+      if (e.name.endsWith(suffix)) return path.join(dir, e.name);
+    }
+  }
+  return null;
+}
+
+/** Scan one root: each immediate sub-directory containing a run script or project file becomes an app. */
 async function scanRoot(rootDir: string): Promise<ScannedApp[]> {
   const result: ScannedApp[] = [];
   let entries: import('node:fs').Dirent[];
@@ -43,25 +62,40 @@ async function scanRoot(rootDir: string): Promise<ScannedApp[]> {
     return result;
   }
 
-  // Also include rootDir itself if it directly contains a run script
+  // rootDir itself: check for script or project
   const rootScript = await findScriptInDir(rootDir);
   if (rootScript) {
-    result.push(buildApp(rootScript, rootDir, rootDir, path.basename(rootDir)));
+    result.push(buildApp('script', rootScript, rootDir, rootDir, path.basename(rootDir)));
+  } else {
+    const rootProject = await findProjectInDir(rootDir);
+    if (rootProject) {
+      result.push(buildApp('project', rootProject, rootDir, rootDir, path.basename(rootDir)));
+    }
   }
 
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     if (e.name.startsWith('.')) continue;
     const sub = path.join(rootDir, e.name);
+
+    // Script-based apps take priority over project detection
     const script = await findScriptInDir(sub);
     if (script) {
-      result.push(buildApp(script, sub, rootDir, e.name));
+      result.push(buildApp('script', script, sub, rootDir, e.name));
+      continue;
+    }
+
+    // Check for project files
+    const proj = await findProjectInDir(sub);
+    if (proj) {
+      result.push(buildApp('project', proj, sub, rootDir, e.name));
     }
   }
   return result;
 }
 
 function buildApp(
+  kind: ScannedApp['kind'],
   scriptPath: string,
   cwd: string,
   rootDir: string,
@@ -79,6 +113,7 @@ function buildApp(
     pinned: false,
     launchMode: 'background',
     hidden: false,
+    kind,
   };
 }
 
@@ -94,7 +129,7 @@ export async function scanAll(): Promise<ScannedApp[]> {
     all.push(...items);
   }
 
-  // dedupe by id (script path)
+  // dedupe by id
   const seen = new Set<string>();
   const out: ScannedApp[] = [];
   for (const a of all) {
